@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Custom Pixel Image Viewer</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background-color: #1e1e1e;
+      color: #f0f0f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px;
+      margin: 0;
+    }
+    .controls {
+      background: #2c2c2c;
+      padding: 20px;
+      border-radius: 8px;
+      display: flex;
+      gap: 20px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      margin-bottom: 30px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    label {
+      display: flex;
+      flex-direction: column;
+      font-size: 14px;
+      gap: 5px;
+    }
+    input[type="number"] {
+      width: 90px;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #555;
+      background: #1a1a1a;
+      color: white;
+      font-size: 16px;
+    }
+    input[type="range"] {
+      width: 120px;
+      cursor: pointer;
+    }
+    input[type="file"] {
+      font-size: 14px;
+    }
+    button {
+      padding: 9px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      background-color: #0078d4;
+      color: white;
+      transition: background-color 0.15s;
+    }
+    button:hover {
+      background-color: #0063b1;
+    }
+    button.filter-active {
+      background-color: #107c41;
+    }
+    button.filter-active:hover {
+      background-color: #0b5a2f;
+    }
+    .screen-frame {
+      border: 2px dashed #666;
+      background: #121212;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="controls">
+    <label>
+      Width (X pixels)
+      <input type="number" id="widthInput" value="400" min="1">
+    </label>
+
+    <label>
+      Height (Y pixels)
+      <input type="number" id="heightInput" value="300" min="1">
+    </label>
+
+    <label>
+      View Scale: <span id="zoomLabel">100%</span>
+      <input type="range" id="zoomInput" value="100" min="10" max="200">
+    </label>
+
+    <button id="modeToggleBtn" type="button">Mode: Stretch</button>
+
+    <label>
+      Upload Image
+      <input type="file" id="imageLoader" accept="image/*">
+    </label>
+  </div>
+
+  <div class="screen-frame">
+    <canvas id="imageCanvas" width="400" height="300"></canvas>
+  </div>
+
+  <script>
+    const widthInput = document.getElementById('widthInput');
+    const heightInput = document.getElementById('heightInput');
+    const zoomInput = document.getElementById('zoomInput');
+    const zoomLabel = document.getElementById('zoomLabel');
+    const modeToggleBtn = document.getElementById('modeToggleBtn');
+    const imageLoader = document.getElementById('imageLoader');
+    const canvas = document.getElementById('imageCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let uploadedImage = null;
+    let isFilterMode = false;
+
+    function renderImage() {
+      const targetWidth = parseInt(widthInput.value, 10) || 1;
+      const targetHeight = parseInt(heightInput.value, 10) || 1;
+      const scale = (parseInt(zoomInput.value, 10) || 100) / 100;
+
+      // 1. Set actual pixel resolution
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+
+      // 2. Set visual display size via CSS
+      canvas.style.width = (targetWidth * scale) + 'px';
+      canvas.style.height = (targetHeight * scale) + 'px';
+      zoomLabel.textContent = Math.round(scale * 100) + '%';
+
+      // 3. Clear canvas
+      ctx.clearRect(0, 0, targetWidth, targetHeight);
+      if (!uploadedImage) return;
+
+      if (!isFilterMode) {
+        // STRETCH MODE: Force image to match exact X and Y
+        ctx.drawImage(uploadedImage, 0, 0, targetWidth, targetHeight);
+      } else {
+        // FILTER MODE: Scale proportionally to cover the frame, then crop excess from center
+        const imgRatio = uploadedImage.width / uploadedImage.height;
+        const targetRatio = targetWidth / targetHeight;
+
+        let drawWidth, drawHeight, offsetX, offsetY;
+
+        if (imgRatio > targetRatio) {
+          // Image is wider than target: match Height (Y), crop Width (X)
+          drawHeight = targetHeight;
+          drawWidth = uploadedImage.width * (targetHeight / uploadedImage.height);
+          offsetX = (targetWidth - drawWidth) / 2;
+          offsetY = 0;
+        } else {
+          // Image is taller than target: match Width (X), crop Height (Y)
+          drawWidth = targetWidth;
+          drawHeight = uploadedImage.height * (targetWidth / uploadedImage.width);
+          offsetX = 0;
+          offsetY = (targetHeight - drawHeight) / 2;
+        }
+
+        ctx.drawImage(uploadedImage, offsetX, offsetY, drawWidth, drawHeight);
+      }
+    }
+
+    // Toggle between Stretch Mode and Filter Mode
+    modeToggleBtn.addEventListener('click', () => {
+      isFilterMode = !isFilterMode;
+      modeToggleBtn.textContent = isFilterMode ? 'Mode: Filter (Crop)' : 'Mode: Stretch';
+      modeToggleBtn.classList.toggle('filter-active', isFilterMode);
+      renderImage();
+    });
+
+    // Handle image upload
+    imageLoader.addEventListener('change', (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          uploadedImage = img;
+          renderImage();
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Update live whenever inputs change
+    widthInput.addEventListener('input', renderImage);
+    heightInput.addEventListener('input', renderImage);
+    zoomInput.addEventListener('input', renderImage);
+
+    // Initialize display on load
+    renderImage();
+  </script>
+
+</body>
+</html>
